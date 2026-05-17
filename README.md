@@ -51,6 +51,31 @@ This project is a dockerized WhatsApp automation prototype using Python (FastAPI
    docker-compose logs -f backend
    ```
 
+## Daily Exchange Rate Automation
+
+The backend includes an automated job that fetches the latest currency exchange rate and sends a WhatsApp message daily.
+
+### Configuration
+
+You can configure the behavior of the daily message using variables in your `.env` file:
+
+- `SCHEDULE_TIME`: The time of day to send the message in 24-hour format (e.g., `08:00` for 8 AM).
+- `TZ`: The timezone used for the schedule (e.g., `America/Bogota`).
+- `TEST_CHAT_ID`: The WhatsApp ID (user or group) where the message will be sent.
+
+By default, the automation fetches the exchange rate from **USD** to **COP**. To change these, you can modify `base_currency` and `target_currency` inside `backend/core/config.py`.
+
+### Running the Automation
+
+The automation is tied to the lifecycle of the FastAPI backend container and runs automatically when the container starts.
+
+1. Configure your `.env` variables.
+2. Restart the backend to apply changes:
+   ```bash
+   docker-compose up -d --build
+   ```
+3. Ensure the WAHA session is connected and active (status `WORKING`). The message will be automatically dispatched at the configured `SCHEDULE_TIME`.
+
 ## Project Structure
 
 - `docker-compose.yml`: Container orchestration and environment mapping.
