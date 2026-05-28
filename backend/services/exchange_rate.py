@@ -1,10 +1,16 @@
 import re
 import logging
+import xml.etree.ElementTree as ET
 import requests
 from bs4 import BeautifulSoup
 from datetime import date, datetime, timedelta
 
 logger = logging.getLogger(__name__)
+
+# Indicator Bancario de Referencia (IBR) Configuration
+# "NR" = Nominal Rate (base 360) - Standard for IBR Overnight
+# "ER" = Effective Annual Rate (Efectiva Anual)
+IBR_UNIT_MEASURE = "NR"
 
 _DAYS_ES = {
     0: "Lunes", 1: "Martes", 2: "Miércoles",
@@ -65,12 +71,19 @@ def _fetch_trm() -> tuple[float, float]:
     return current, previous
 
 
+def _calculate_eurcop_cross() -> tuple[float, float]:
+    """Calculates EUR/COP using EUR/USD and USD/COP (TRM)."""
+    trm, trm_prev = _fetch_trm()
+    eurusd, eurusd_prev = _fetch_eurusd()
+    return eurusd * trm, eurusd_prev * trm_prev
+
+
 # ── EUR/COP ──────────────────────────────────────────────────────────────────
 
 def _fetch_eurcop() -> tuple[float, float]:
     """
     EUR/COP from dineroeneltiempo.com (SSR page, rate shown as $X,XXX.XX near
-    'PRECIO HOY'). Falls back to Frankfurter ECB API on any parse failure.
+    'PRECIO HOY'). Falls back to cross rate (EUR/USD * TRM) on any parse failure.
     """
     try:
         resp = requests.get(
@@ -79,7 +92,7 @@ def _fetch_eurcop() -> tuple[float, float]:
             timeout=12,
         )
         resp.raise_for_status()
-        soup = BeautifulSoup(resp.text, "lxml")
+        soup = BeautifulSoup(resp.text, "html.parser")
         text = soup.get_text(" ", strip=True)
 
         # Site uses US number format: $4,273.76
@@ -87,7 +100,7 @@ def _fetch_eurcop() -> tuple[float, float]:
         for raw in candidates:
             value = float(raw.replace(",", ""))
             if 3_000 < value < 8_000:
-                _, prev = _fetch_frankfurter("COP")
+                _, prev = _calculate_eurcop_cross()
                 return value, prev
 
         # Broader fallback: any large number in the plausible COP range
@@ -97,7 +110,7 @@ def _fetch_eurcop() -> tuple[float, float]:
             try:
                 value = float(norm)
                 if 3_000 < value < 8_000:
-                    _, prev = _fetch_frankfurter("COP")
+                    _, prev = _calculate_eurcop_cross()
                     return value, prev
             except ValueError:
                 continue
@@ -105,8 +118,8 @@ def _fetch_eurcop() -> tuple[float, float]:
         raise ValueError("No plausible EUR/COP value found on dineroeneltiempo.com")
 
     except Exception as exc:
-        logger.warning("dineroeneltiempo.com scrape failed, using Frankfurter: %s", exc)
-        return _fetch_frankfurter("COP")
+        logger.warning("dineroeneltiempo.com scrape failed, using cross rate calculation: %s", exc)
+        return _calculate_eurcop_cross()
 
 
 # ── EUR/USD ──────────────────────────────────────────────────────────────────
@@ -178,53 +191,54 @@ def _fetch_frankfurter(target: str) -> tuple[float, float]:
 
 # ── IBR Overnight ────────────────────────────────────────────────────────────
 
-_IBR_URL = "https://www.banrep.gov.co/es/glosario/indicador-bancario-referencia-ibr"
-
 def _fetch_ibr() -> tuple[float, float]:
     """
-    IBR Overnight from BANREP.
-    Source: https://www.banrep.gov.co/es/glosario/indicador-bancario-referencia-ibr
+    Official daily IBR Overnight rate from Banco de la República (Colombia) SDMX service.
+    Uses IBR_UNIT_MEASURE constant ("NR" for Nominal, "ER" for Effective Annual).
     Returns (current, previous); previous == current when history is unavailable.
     """
-    resp = requests.get(_IBR_URL, headers=_HEADERS, timeout=15)
+    start_date = (date.today() - timedelta(days=10)).strftime("%Y-%m-%d")
+    url = f"https://totoro.banrep.gov.co/nsi-jax-ws/rest/data/ESTAT,DF_IBR_DAILY_HIST,1.0/all/ALL/?startPeriod={start_date}"
+    
+    resp = requests.get(url, timeout=15)
     resp.raise_for_status()
-    soup = BeautifulSoup(resp.text, "lxml")
-
-    # 1. Try structured table: look for a row containing "overnight"
-    for row in soup.find_all("tr"):
-        cells = [td.get_text(" ", strip=True) for td in row.find_all(["td", "th"])]
-        row_text = " ".join(cells).lower()
-        if "overnight" in row_text:
-            for cell in cells:
-                m = re.search(r'(\d{1,2}[,\.]\d{3,4})', cell)
-                if m:
-                    val = float(m.group(1).replace(",", "."))
-                    if 5.0 <= val <= 25.0:
-                        return val, val
-
-    # 2. Regex scan over plain text
-    text = soup.get_text(" ", strip=True)
-    patterns = [
-        r'overnight[^%\n]{0,80}?(\d{1,2}[,\.]\d{3,4})\s*%',
-        r'IBR[^%\n]{0,80}?overnight[^%\n]{0,80}?(\d{1,2}[,\.]\d{3,4})\s*%',
-        r'(\d{1,2}[,\.]\d{3,4})\s*%[^%\n]{0,40}?overnight',
-    ]
-    for pat in patterns:
-        m = re.search(pat, text, re.IGNORECASE)
-        if m:
-            val = float(m.group(1).replace(",", "."))
-            if 5.0 <= val <= 25.0:
-                return val, val
-
-    # 3. Broad scan: any plausible rate near "IBR"
-    ibr_section = re.search(r'IBR.{0,200}', text, re.IGNORECASE | re.DOTALL)
-    if ibr_section:
-        for n in re.findall(r'\b(\d{1,2}[,\.]\d{3,4})\b', ibr_section.group()):
-            val = float(n.replace(",", "."))
-            if 5.0 <= val <= 25.0:
-                return val, val
-
-    raise RuntimeError("Could not retrieve IBR overnight rate from BANREP")
+    
+    root = ET.fromstring(resp.content)
+    ns = {'generic': 'http://www.sdmx.org/resources/sdmxml/schemas/v2_1/data/generic'}
+    
+    observations = []
+    
+    for series in root.findall('.//generic:Series', ns):
+        # Extract SeriesKey values
+        keys = {}
+        for val in series.findall('.//generic:SeriesKey/generic:Value', ns):
+            keys[val.attrib.get('id')] = val.attrib.get('value')
+            
+        # IBR Overnight is under SUBJECT 'IRIBRM00'
+        if (keys.get('SUBJECT') == 'IRIBRM00' and 
+                keys.get('FREQ') == 'D' and 
+                keys.get('UNIT_MEASURE') == IBR_UNIT_MEASURE):
+            for obs in series.findall('.//generic:Obs', ns):
+                dim = obs.find('generic:ObsDimension', ns)
+                val = obs.find('generic:ObsValue', ns)
+                if dim is not None and val is not None:
+                    date_str = dim.attrib.get('value')
+                    rate_str = val.attrib.get('value')
+                    try:
+                        observations.append((date_str, float(rate_str)))
+                    except ValueError:
+                        continue
+            break
+            
+    if not observations:
+        raise RuntimeError(f"No IBR Overnight observations found in SDMX feed for unit {IBR_UNIT_MEASURE}")
+        
+    # Sort chronologically by date string
+    observations.sort(key=lambda x: x[0])
+    
+    current = observations[-1][1]
+    previous = observations[-2][1] if len(observations) > 1 else current
+    return current, previous
 
 
 # ── Message builder ──────────────────────────────────────────────────────────
