@@ -4,18 +4,25 @@ from apscheduler.triggers.cron import CronTrigger
 from backend.core.config import settings
 from backend.services.waha import WahaClient
 from backend.services.exchange_rate import get_exchange_rate_message
+from backend.services.holidays import is_colombian_holiday
 
 logger = logging.getLogger(__name__)
 
 def send_daily_exchange_rate():
     """
     Job function to fetch the exchange rate and send it via WhatsApp.
+    Skips execution on Colombian public holidays.
     """
     logger.info("Executing daily exchange rate job...")
+
+    if is_colombian_holiday():
+        logger.info("Today is a Colombian public holiday — skipping message.")
+        return
+
     try:
         message = get_exchange_rate_message()
         client = WahaClient()
-        
+
         # Send message to the configured test chat ID
         if settings.test_chat_id:
             response = client.send_message(chat_id=settings.test_chat_id, text=message)
