@@ -72,7 +72,7 @@ def _fetch_trm() -> tuple[float, float]:
 
 
 def _calculate_eurcop_cross() -> tuple[float, float]:
-    """Calculates EUR/COP using EUR/USD and USD/COP (TRM)."""
+    """Calculates EUR/COP using EURUSD and USD/COP (TRM)."""
     trm, trm_prev = _fetch_trm()
     eurusd, eurusd_prev = _fetch_eurusd()
     return eurusd * trm, eurusd_prev * trm_prev
@@ -83,7 +83,7 @@ def _calculate_eurcop_cross() -> tuple[float, float]:
 def _fetch_eurcop() -> tuple[float, float]:
     """
     EUR/COP from dineroeneltiempo.com (SSR page, rate shown as $X,XXX.XX near
-    'PRECIO HOY'). Falls back to cross rate (EUR/USD * TRM) on any parse failure.
+    'PRECIO HOY'). Falls back to cross rate (EURUSD * TRM) on any parse failure.
     """
     try:
         resp = requests.get(
@@ -122,11 +122,11 @@ def _fetch_eurcop() -> tuple[float, float]:
         return _calculate_eurcop_cross()
 
 
-# ── EUR/USD ──────────────────────────────────────────────────────────────────
+# ── EURUSD ──────────────────────────────────────────────────────────────────
 
 def _fetch_eurusd() -> tuple[float, float]:
     """
-    Official EUR/USD reference rate from the ECB.
+    Official EURUSD reference rate from the ECB.
     Same data as: https://www.ecb.europa.eu/stats/policy_and_exchange_rates/
                   euro_reference_exchange_rates/html/eurofxref-graph-usd.en.html
     """
@@ -153,7 +153,7 @@ def _fetch_eurusd() -> tuple[float, float]:
         return values[-1], values[-2]
     if len(values) == 1:
         return values[0], values[0]
-    raise RuntimeError("No EUR/USD data returned from ECB data API")
+    raise RuntimeError("No EURUSD data returned from ECB data API")
 
 
 def _fetch_frankfurter(target: str) -> tuple[float, float]:
@@ -264,10 +264,10 @@ def get_exchange_rate_message() -> str:
 
     try:
         eurusd, eurusd_prev = _fetch_eurusd()
-        lines.append(f"EUR/USD: {eurusd:.4f} {_change_tag(eurusd, eurusd_prev)}")
+        lines.append(f"EURUSD: {eurusd:.4f} {_change_tag(eurusd, eurusd_prev)}")
     except Exception as exc:
-        logger.error("EUR/USD error: %s", exc)
-        lines.append("EUR/USD: No disponible ⚠️")
+        logger.error("EURUSD error: %s", exc)
+        lines.append("EURUSD: No disponible ⚠️")
 
     try:
         ibr, ibr_prev = _fetch_ibr()

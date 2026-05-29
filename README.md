@@ -14,7 +14,7 @@ This project is a dockerized WhatsApp automation prototype using Python (FastAPI
 
 2. **Start the containers**
    ```bash
-   docker-compose up -d --build
+   yes
    ```
    This will start both the FastAPI backend (`http://localhost:8000`) and the WAHA server (`http://localhost:3000`).
 
@@ -45,7 +45,14 @@ This project is a dockerized WhatsApp automation prototype using Python (FastAPI
    docker-compose exec backend python backend/test_connection.py
    ```
 
-6. **Test Webhooks**
+6. **Send today's exchange rate message manually**
+   Generate today's exchange rate message and send it immediately to the `TEST_CHAT_ID`:
+   ```bash
+   docker-compose exec backend python backend/test_send_rate.py
+   ```
+   The script will print the message to the console before sending so you can verify the content. This is useful for testing the full flow without waiting for the scheduled time.
+
+7. **Test Webhooks**
    Send a message to your connected WhatsApp number from another phone. You should see the webhook event logged in your backend container logs:
    ```bash
    docker-compose logs -f backend
@@ -83,4 +90,6 @@ The automation is tied to the lifecycle of the FastAPI backend container and run
 - `backend/api/routes.py`: Contains the webhook endpoint `POST /api/webhook`.
 - `backend/services/waha.py`: Helper class to interact with WAHA via HTTP requests.
 - `backend/core/config.py`: Environment variable configuration logic using Pydantic.
-- `backend/test_connection.py`, `list_chats.py`, `list_groups.py`: Utility scripts for testing and retrieving WAHA data.
+- `backend/test_connection.py`: Sends a plain test message to verify the WAHA connection.
+- `backend/test_send_rate.py`: Generates today's exchange rate message and sends it to WhatsApp immediately.
+- `backend/list_chats.py`, `backend/list_groups.py`: Utility scripts for retrieving chat and group IDs from WAHA.
