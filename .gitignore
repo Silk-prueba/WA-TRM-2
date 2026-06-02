@@ -1,5 +1,7 @@
 # Environment Variables
 .env
+.env.local
+.env.dev
 
 # WAHA persistent data
 waha_data/
@@ -41,3 +43,5 @@ venv.bak/
 .idea/
 *.swp
 *.swo
+
+

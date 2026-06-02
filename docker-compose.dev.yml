@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  waha-dev:
+    image: devlikeapro/waha:latest
+    container_name: waha-dev
+    ports:
+      - "${WAHA_PORT:-3001}:3000"
+    environment:
+      - WAHA_LOG_LEVEL=info
+      - WHATSAPP_HOOK_URL=http://backend-dev:${BACKEND_PORT:-8001}/api/webhook
+      - WHATSAPP_HOOK_EVENTS=message
+      - WAHA_DASHBOARD_NO_PASSWORD=true
+      - WHATSAPP_DEFAULT_ENGINE=WEBJS
+      - WHATSAPP_START_SESSION=default
+      - WHATSAPP_RESTART_ALL_SESSIONS=true
+      - WAHA_API_KEY=${WAHA_API_KEY:-123}
+    volumes:
+      - waha_dev_data:/app/.waha
+    restart: unless-stopped
+
+  backend-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: backend-dev
+    ports:
+      - "${BACKEND_PORT:-8001}:8000"
+    env_file:
+      - .env.dev
+    environment:
+      - WAHA_API_URL=http://waha-dev:3000
+      - TEST_CHAT_ID=${TEST_CHAT_ID}
+      - SCHEDULE_TIME=${SCHEDULE_TIME:-08:00}
+      - TZ=${TZ:-America/Bogota}
+    volumes:
+      - ./backend:/app/backend
+    depends_on:
+      - waha-dev
+    restart: unless-stopped
+    command: uvicorn backend.main:app --host 0.0.0.0 --port 8000
+
+volumes:
+  waha_dev_data:
+    driver: local
