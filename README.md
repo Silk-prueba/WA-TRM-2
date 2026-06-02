@@ -14,8 +14,13 @@ This project is a dockerized WhatsApp automation prototype using Python (FastAPI
 
 2. **Start the containers**
    ```bash
-   yes
+   docker-compose up -d --build
    ```
+   in linux:
+   ```bash
+   docker compose up -d --build
+   ```   
+
    This will start both the FastAPI backend (`http://localhost:8000`) and the WAHA server (`http://localhost:3000`).
 
 3. **Configure the Dashboard & Authenticate**
