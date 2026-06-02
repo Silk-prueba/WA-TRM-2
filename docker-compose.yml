@@ -13,6 +13,7 @@ services:
       - WAHA_DASHBOARD_NO_PASSWORD=true
       - WHATSAPP_DEFAULT_ENGINE=WEBJS
       - WHATSAPP_START_SESSION=default
+      - WHATSAPP_RESTART_ALL_SESSIONS=true
       - WAHA_API_KEY=123
     volumes:
       - waha_data:/app/.waha
@@ -35,7 +36,7 @@ services:
     depends_on:
       - waha
     restart: unless-stopped
-    command: uvicorn backend.main:app --host 0.0.0.0 --port ${BACKEND_PORT:-8000} --reload
+    command: uvicorn backend.main:app --host 0.0.0.0 --port ${BACKEND_PORT:-8000} 
 
 volumes:
   waha_data:
