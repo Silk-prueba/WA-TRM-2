@@ -48,3 +48,15 @@ async def update_config(chat_id: str = None, hour: int = None, minute: int = Non
 @app.get("/")
 def read_root():
     return {"message": "WhatsApp Automation Backend is running"}
+
+    
+@app.get("/api/config")
+async def get_config():
+    """Consulta el chat ID y próxima ejecución del scheduler."""
+    from backend.core.config import settings
+    job = scheduler.get_job("daily_exchange_rate_job")
+    return {
+        "chat_id": settings.test_chat_id,
+        "schedule_time": settings.schedule_time,
+        "next_run": str(job.next_run_time) if job else None,
+    }
