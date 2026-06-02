@@ -4,51 +4,64 @@ from apscheduler.triggers.cron import CronTrigger
 from backend.core.config import settings
 from backend.services.waha import WahaClient
 from backend.services.exchange_rate import get_exchange_rate_message
+from backend.services.holidays import is_colombian_holiday
 
 logger = logging.getLogger(__name__)
 
-def send_daily_exchange_rate():
+
+async def send_daily_exchange_rate():
     """
-    Job function to fetch the exchange rate and send it via WhatsApp.
+    Async job: fetches all indicators and sends via WhatsApp.
+    Skips on Colombian public holidays.
+    Supports multiple chat IDs via WHATSAPP_CHAT_IDS (comma-separated).
     """
     logger.info("Executing daily exchange rate job...")
+
+    if is_colombian_holiday():
+        logger.info("Today is a Colombian public holiday — skipping message.")
+        return
+
+    # Support multiple chat IDs: "573001234567@c.us,120363xxx@g.us"
+    raw = getattr(settings, "whatsapp_chat_ids", None) or settings.test_chat_id or ""
+    chat_ids = [cid.strip() for cid in raw.split(",") if cid.strip()]
+
+    if not chat_ids:
+        logger.warning("No chat IDs configured. Set WHATSAPP_CHAT_IDS in .env")
+        return
+
     try:
         message = get_exchange_rate_message()
         client = WahaClient()
-        
-        # Send message to the configured test chat ID
-        if settings.test_chat_id:
-            response = client.send_message(chat_id=settings.test_chat_id, text=message)
-            logger.info(f"Message sent successfully: {response}")
-        else:
-            logger.warning("TEST_CHAT_ID is not configured in environment variables.")
+        for chat_id in chat_ids:
+            try:
+                response = await client.send_message(chat_id=chat_id, text=message)
+                logger.info(f"Sent to {chat_id}: {response}")
+            except Exception as e:
+                logger.error(f"Failed to send to {chat_id}: {e}")
     except Exception as e:
-        logger.error(f"Error in daily exchange rate job: {e}")
+        logger.error(f"Error building message: {e}")
+
 
 def setup_scheduler():
     """
-    Initializes and starts the APScheduler.
+    Initializes and starts the APScheduler with timezone set to Bogotá.
     """
-    scheduler = AsyncIOScheduler()
-    
-    # Parse the configured schedule_time (e.g., "08:00")
+    scheduler = AsyncIOScheduler(timezone="America/Bogota")
+
     try:
-        hour, minute = map(int, settings.schedule_time.split(':'))
+        hour, minute = map(int, settings.schedule_time.split(":"))
     except ValueError:
-        logger.error(f"Invalid SCHEDULE_TIME format: {settings.schedule_time}. Using default 08:00.")
+        logger.error(f"Invalid SCHEDULE_TIME: '{settings.schedule_time}'. Using 08:00.")
         hour, minute = 8, 0
 
-    # Schedule the job to run daily at the specified time
-    trigger = CronTrigger(hour=hour, minute=minute)
-    
     scheduler.add_job(
         send_daily_exchange_rate,
-        trigger=trigger,
+        CronTrigger(hour=hour, minute=minute, timezone="America/Bogota"),
         id="daily_exchange_rate_job",
         replace_existing=True,
-        misfire_grace_time=60
+        misfire_grace_time=300,  # 5 min tolerance (server reboots, etc.)
     )
-    
+
     scheduler.start()
-    logger.info(f"Scheduler started. Daily job configured for {hour:02d}:{minute:02d}.")
+    logger.info(f"Scheduler started. Job fires daily at {hour:02d}:{minute:02d} Bogotá time.")
     return scheduler
